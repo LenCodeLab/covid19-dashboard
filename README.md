@@ -4,7 +4,7 @@ An interactive web-based dashboard built with **Streamlit**, visualizing the spr
 
 ## 📊 Live Demo
 
-🚀 [Launch the Dashboard](https://covid19-dashboard-lenix.onrender.com)
+🚀 [Launch the Dashboard](https://covid19-dashboard-1.onrender.com/)
 
 ---
 
