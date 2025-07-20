@@ -21,3 +21,4 @@ myenv/
 
 # Mac system files
 .DS_Store
+.env
