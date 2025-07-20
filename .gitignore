@@ -9,8 +9,8 @@ __pycache__/
 
 # Virtual environments
 venv/
+myenv/
 .env/
-.myenv/
 
 # VS Code
 .vscode/
@@ -18,4 +18,6 @@ venv/
 # Data files
 *.csv
 *.xlsx
-.env
+
+# Mac system files
+.DS_Store
