@@ -18,3 +18,4 @@ venv/
 # Data files
 *.csv
 *.xlsx
+.env
