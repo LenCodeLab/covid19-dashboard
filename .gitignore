@@ -1,24 +1,5 @@
-# Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-
-# Jupyter Notebook
-.ipynb_checkpoints/
-
-# Virtual environments
-venv/
 myenv/
-.env/
-
-# VS Code
-.vscode/
-
-# Data files
-*.csv
-*.xlsx
-
-# Mac system files
-.DS_Store
 .env
+*.csv

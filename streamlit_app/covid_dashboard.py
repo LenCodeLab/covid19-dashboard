@@ -1,96 +1,98 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from io import BytesIO
-import sys
-import os
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Add project root directory to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-# Now imports will work
-from utils.db import fetch_covid_data
-
-# Config
+# Streamlit page settings
 st.set_page_config(page_title="COVID-19 Dashboard", layout="wide")
 
-# Title
-st.markdown("<h1 style='text-align: center;'>🦠 COVID-19 Dashboard - Africa & Global Insights</h1>", unsafe_allow_html=True)
+# Load and cache data
+@st.cache_data
+def load_data():
+    cases_url = "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/jhu/new_cases.csv"
+    deaths_url = "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/jhu/new_deaths.csv"
+    total_cases_url = "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/jhu/total_cases.csv"
+    total_deaths_url = "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/jhu/total_deaths.csv"
 
-# Load Data
-df = fetch_covid_data()
-df['date'] = pd.to_datetime(df['date'])
+    # Load all data
+    new_cases = pd.read_csv(cases_url)
+    new_deaths = pd.read_csv(deaths_url)
+    total_cases = pd.read_csv(total_cases_url)
+    total_deaths = pd.read_csv(total_deaths_url)
 
-# Rename columns to standard names
-df.rename(columns={
-    "location": "Country",
-    "continent": "Continent",
-    "total_cases": "Total Cases",
-    "new_cases": "New Cases",
-    "total_deaths": "Total Deaths",
-    "new_deaths": "New Deaths"
-}, inplace=True)
+    # Melt for daily data
+    new_cases = new_cases.melt(id_vars=["date"], var_name="country", value_name="new_cases")
+    new_deaths = new_deaths.melt(id_vars=["date"], var_name="country", value_name="new_deaths")
 
-# Sidebar: Filter
-st.sidebar.header("Filter Options")
-country_list = sorted(df['Country'].dropna().unique())
-default_index = country_list.index("Kenya") if "Kenya" in country_list else 0
-country = st.sidebar.selectbox("Choose a Country", country_list, index=default_index)
+    # Merge daily data
+    daily_df = pd.merge(new_cases, new_deaths, on=["date", "country"])
+    daily_df["date"] = pd.to_datetime(daily_df["date"])
+    daily_df = daily_df.dropna()
 
-# Filtered Data
-filtered_df = df[df["Country"] == country].sort_values("date")
+    # Latest totals
+    latest_total_cases = total_cases.iloc[-1].drop("date")
+    latest_total_deaths = total_deaths.iloc[-1].drop("date")
 
-# Latest row
-latest = filtered_df.iloc[-1]
+    return daily_df, latest_total_cases, latest_total_deaths
 
-# ==================== METRICS ====================
-st.subheader(f"📍 Summary for {country}")
+# Sidebar
+st.sidebar.title("COVID-19 Dashboard 🌍")
+refresh = st.sidebar.button("🔄 Refresh Data", on_click=lambda: [st.cache_data.clear(), st.rerun()])
+
+# Show loading spinner while loading data
+with st.spinner("Loading data..."):
+    df, total_cases_dict, total_deaths_dict = load_data()
+
+# Main Title
+st.title("📊 COVID-19 Cases Dashboard")
+st.markdown("Data sourced from [Our World In Data](https://github.com/owid/covid-19-data).")
+
+# Country selection
+country = st.selectbox("Select a country to view its daily new cases and deaths", df["country"].unique())
+
+# Filter data for selected country
+country_data = df[df["country"] == country].sort_values("date")
+
+# Total metrics
+st.subheader(f"📌 Latest COVID-19 Stats for {country}")
+
+total_cases = total_cases_dict.get(country, float("nan"))
+total_deaths = total_deaths_dict.get(country, float("nan"))
+death_rate = (total_deaths / total_cases * 100) if pd.notna(total_cases) and total_cases > 0 else float("nan")
+
 col1, col2, col3 = st.columns(3)
-col1.metric("🦠 Total Cases", f"{int(latest['Total Cases']):,}")
-col2.metric("☠️ Total Deaths", f"{int(latest['Total Deaths']):,}")
-col3.metric("➕ New Cases", f"{int(latest['New Cases']):,}")
+col1.metric("🧮 Total Cases", f"{int(total_cases):,}" if pd.notna(total_cases) else "N/A")
+col2.metric("💀 Total Deaths", f"{int(total_deaths):,}" if pd.notna(total_deaths) else "N/A")
+col3.metric("📉 Death Rate", f"{death_rate:.2f}%" if pd.notna(death_rate) else "N/A")
 
-st.markdown("---")
+# Country plot
+st.subheader(f"📈 Daily New COVID-19 Cases and Deaths in {country}")
+fig, ax = plt.subplots(figsize=(10, 4))
+ax.plot(country_data["date"], country_data["new_cases"], color="blue", label="New Daily Cases")
+ax.plot(country_data["date"], country_data["new_deaths"], color="red", label="New Daily Deaths", linestyle="--")
+ax.set_xlabel("Date")
+ax.set_ylabel("Count")
+ax.set_title(f"COVID-19 Daily New Cases and Deaths - {country}")
+ax.legend()
+st.pyplot(fig)
 
-# ==================== EXPORT SECTION ====================
-st.sidebar.markdown("### Download Data")
-csv = filtered_df.to_csv(index=False).encode("utf-8")
-excel_buffer = BytesIO()
-with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-    filtered_df.to_excel(writer, index=False, sheet_name='Data')
-st.sidebar.download_button("⬇️ Download CSV", csv, f"{country}_covid_data.csv", "text/csv")
-st.sidebar.download_button("⬇️ Download Excel", excel_buffer.getvalue(), f"{country}_covid_data.xlsx", "application/vnd.ms-excel")
+# Country comparison chart
+st.subheader("🌍 Compare Countries (New Cases Only)")
+selected_countries = st.multiselect(
+    "Select countries to compare",
+    df["country"].unique(),
+    default=["Kenya", "Nigeria", "South Africa"]
+)
 
-# ==================== VISUALIZATIONS ====================
-tab1, tab2, tab3 = st.tabs(["📈 Trends", "📊 Bar Chart", "🧩 Pie Chart"])
-
-with tab1:
-    st.markdown("#### 📈 COVID-19 Trends Over Time")
-    fig_line = px.line(
-        filtered_df,
-        x="date",
-        y=["Total Cases", "New Cases", "Total Deaths", "New Deaths"],
-        labels={"value": "Count", "variable": "Metric"},
-        template="plotly_dark"
-    )
-    st.plotly_chart(fig_line, use_container_width=True)
-
-with tab2:
-    st.markdown("#### 📊 Bar Chart - Latest Case Stats")
-    latest_data = pd.DataFrame({
-        "Metric": ["Total Deaths", "New Deaths", "New Cases"],
-        "Value": [latest["Total Deaths"], latest["New Deaths"], latest["New Cases"]]
-    })
-    fig_bar = px.bar(latest_data, x="Metric", y="Value", color="Metric", text_auto=True, template="simple_white")
-    st.plotly_chart(fig_bar, use_container_width=True)
-
-with tab3:
-    st.markdown("#### 🧩 Pie Chart - Total Cases by Continent")
-    latest_global = df[df["date"] == df["date"].max()]
-    continent_data = latest_global.groupby("Continent")["Total Cases"].sum().reset_index()
-    fig_pie = px.pie(continent_data, values="Total Cases", names="Continent", title="Share of Total Cases by Continent")
-    st.plotly_chart(fig_pie, use_container_width=True)
+if selected_countries:
+    comparison_df = df[df["country"].isin(selected_countries)]
+    fig2, ax2 = plt.subplots(figsize=(12, 5))
+    sns.lineplot(data=comparison_df, x="date", y="new_cases", hue="country", ax=ax2)
+    ax2.set_xlabel("Date")
+    ax2.set_ylabel("Cases")
+    ax2.set_title("Daily New Cases Comparison")
+    st.pyplot(fig2)
 
 # Footer
 st.markdown("---")
-st.markdown("<p style='text-align: center;'>Built with ❤️ by Lenix Owino · Powered by Streamlit & PostgreSQL</p>", unsafe_allow_html=True)
+st.markdown("Created by **Lenix Owino** | Data from [OWID](https://github.com/owid/covid-19-data)")
